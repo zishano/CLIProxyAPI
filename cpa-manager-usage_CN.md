@@ -67,6 +67,14 @@ cd /mnt/e/Project/LMK/CLIProxyAPI
 
 在第一个终端启动模型代理：
 
+如果首次使用 Codex，或需要添加、重新授权 Codex 账号，先执行设备登录命令：
+
+```bash
+./bin/cli-proxy-api -config ./config.yaml -codex-device-login
+```
+
+按照终端提示打开授权网页并输入设备码，完成账号授权。此命令用于登录，不是持续运行代理服务；授权完成后，再执行下面的启动命令：
+
 ```bash
 ./bin/cli-proxy-api --config ./config.yaml --local-model
 ```
