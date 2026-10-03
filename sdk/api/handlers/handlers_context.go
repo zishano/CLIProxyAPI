@@ -22,6 +22,10 @@ type disallowFreeAuthContextKey struct{}
 
 type nestedExecutionTrackerKey struct{}
 
+// CredentialAuthIndexHeader selects one credential by its stable, non-secret auth index.
+// HTTP middleware must resolve the index to an internal auth ID before calling handlers.
+const CredentialAuthIndexHeader = "X-CPA-AUTH-INDEX"
+
 type nestedExecutionTracker struct {
 	mu     sync.Mutex
 	called bool
@@ -189,6 +193,11 @@ func pinnedAuthIDFromContext(ctx context.Context) string {
 	default:
 		return ""
 	}
+}
+
+// PinnedAuthIDFromContext returns the internal auth ID selected by trusted middleware.
+func PinnedAuthIDFromContext(ctx context.Context) string {
+	return pinnedAuthIDFromContext(ctx)
 }
 
 func selectedAuthIDCallbackFromContext(ctx context.Context) func(string) {

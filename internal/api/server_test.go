@@ -30,6 +30,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	runtimehelps "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executionregistry"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -952,6 +953,74 @@ func TestCodexAlphaSearchForwardsRequest(t *testing.T) {
 	}
 	if _, errParse := time.Parse("20060102150405", parts[0]); errParse != nil {
 		t.Fatalf("trace timestamp = %q: %v", parts[0], errParse)
+	}
+}
+
+func TestCredentialAuthIndexHeaderPinsExactCredentialAndIsNotForwarded(t *testing.T) {
+	server := newTestServer(t)
+	executor := &codexSearchCaptureExecutor{}
+	server.handlers.AuthManager.RegisterExecutor(executor)
+
+	credentials := []*auth.Auth{
+		{
+			ID:       "codex-pin-primary",
+			Provider: "codex",
+			Status:   auth.StatusActive,
+			Metadata: map[string]any{"access_token": "token-primary"},
+		},
+		{
+			ID:       "codex-pin-secondary",
+			Provider: "codex",
+			Status:   auth.StatusActive,
+			Metadata: map[string]any{"access_token": "token-secondary"},
+		},
+	}
+	for _, credential := range credentials {
+		if _, errRegister := server.handlers.AuthManager.Register(context.Background(), credential); errRegister != nil {
+			t.Fatalf("register Codex auth: %v", errRegister)
+		}
+	}
+	target, ok := server.handlers.AuthManager.GetByID("codex-pin-secondary")
+	if !ok {
+		t.Fatal("target credential was not registered")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/alpha/search", strings.NewReader(`{"query":"pin"}`))
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set(handlers.CredentialAuthIndexHeader, target.Index)
+	recorder := httptest.NewRecorder()
+	server.engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if got := executor.authIDs; len(got) != 1 || got[0] != target.ID {
+		t.Fatalf("selected auth IDs = %v, want [%s]", got, target.ID)
+	}
+	if got := executor.request.Header.Get(handlers.CredentialAuthIndexHeader); got != "" {
+		t.Fatalf("credential control header reached upstream: %q", got)
+	}
+	if traceID := recorder.Header().Get(internallogging.CPATraceIDHeader); !strings.Contains(traceID, "-"+target.Index+"-") {
+		t.Fatalf("trace ID = %q, want selected auth index %q", traceID, target.Index)
+	}
+}
+
+func TestCredentialAuthIndexHeaderRejectsUnknownIndexWithoutProviderCall(t *testing.T) {
+	server := newTestServer(t)
+	executor := &codexSearchCaptureExecutor{}
+	server.handlers.AuthManager.RegisterExecutor(executor)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/alpha/search", strings.NewReader(`{"query":"pin"}`))
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set(handlers.CredentialAuthIndexHeader, "unknown-auth-index")
+	recorder := httptest.NewRecorder()
+	server.engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusNotFound, recorder.Body.String())
+	}
+	if executor.httpCalls != 0 {
+		t.Fatalf("provider calls = %d, want 0", executor.httpCalls)
 	}
 }
 

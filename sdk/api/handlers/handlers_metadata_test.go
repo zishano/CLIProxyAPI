@@ -62,6 +62,23 @@ func TestGetContextWithCancelCapturesResolvedClientIP(t *testing.T) {
 	}
 }
 
+func TestGetContextWithCancelPreservesMiddlewarePinnedAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request = request.WithContext(WithPinnedAuthID(request.Context(), "internal-auth-id"))
+	ginCtx.Request = request
+
+	handler := &BaseAPIHandler{Cfg: &config.SDKConfig{}}
+	ctx, cancel := handler.GetContextWithCancel(nil, ginCtx, context.Background())
+	defer cancel()
+
+	metadata := requestExecutionMetadata(ctx)
+	if got := metadata[coreexecutor.PinnedAuthMetadataKey]; got != "internal-auth-id" {
+		t.Fatalf("pinned auth metadata = %#v, want internal auth ID", got)
+	}
+}
+
 func TestRequestExecutionMetadataIncludesExecutionSessionWithoutIdempotencyKey(t *testing.T) {
 	ctx := WithExecutionSessionID(context.Background(), "session-1")
 

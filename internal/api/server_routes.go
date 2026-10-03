@@ -62,6 +62,7 @@ func (s *Server) setupRoutes() {
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
+	v1.Use(s.credentialPinMiddleware())
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
@@ -111,6 +112,7 @@ func (s *Server) setupRoutes() {
 	// Codex CLI direct route aliases (chatgpt_base_url compatible)
 	codexDirect := s.engine.Group("/backend-api/codex")
 	codexDirect.Use(AuthMiddleware(s.accessManager))
+	codexDirect.Use(s.credentialPinMiddleware())
 	{
 		codexDirect.GET("/responses", openaiResponsesHandlers.ResponsesWebsocket)
 		codexDirect.POST("/responses", openaiResponsesHandlers.Responses)
@@ -364,6 +366,11 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		return
 	}
 	selectionOpts := coreexecutor.Options{Headers: selectionHeaders, OriginalRequest: body}
+	if pinnedAuthID := handlers.PinnedAuthIDFromContext(ctx); pinnedAuthID != "" {
+		selectionOpts.Metadata = map[string]any{
+			coreexecutor.PinnedAuthMetadataKey: pinnedAuthID,
+		}
+	}
 	var selection *auth.HomeDispatchSelection
 	var selected *auth.Auth
 	if s.handlers.AuthManager.HomeEnabled() {

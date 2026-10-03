@@ -130,6 +130,22 @@ PackyCode provides special discounts for our software users: register using <a h
 - OpenAI-compatible upstream providers via config (e.g., OpenRouter)
 - Reusable Go SDK for embedding the proxy (see `docs/sdk-usage.md`)
 
+### Credential pinning
+
+Authenticated clients may select one credential on `/v1/*` and
+`/backend-api/codex/*` by sending its stable, non-secret index:
+
+```http
+X-CPA-AUTH-INDEX: <auth_index>
+```
+
+Without the header, normal configured routing applies. An unknown index returns
+HTTP 404 before any provider call. The control header is removed before upstream
+execution, and `X-CPA-TRACE-ID` provides audit evidence for the credential that
+was actually selected. Obtain `auth_index` from the authenticated management
+surface; never use an OAuth token, account email, or auth file name. Anyone with
+a downstream API key can use this control, so scope those keys accordingly.
+
 ## Getting Started
 
 CLIProxyAPI Guides: [https://help.router-for.me/](https://help.router-for.me/)
