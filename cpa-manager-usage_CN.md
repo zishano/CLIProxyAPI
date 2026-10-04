@@ -53,7 +53,7 @@
    ```
 
 6. 在支持 Linux 权限的文件系统上，将密钥文件权限设为 `600`、运行目录设为 `700`。WSL 的 `/mnt/e` 权限效果取决于挂载设置，也需要限制对应 Windows 目录的访问权限。
-7. 准备代理可执行文件 `bin/cli-proxy-api`，赋予两个服务程序和启动脚本执行权限，再按下文启动。
+7. 准备代理可执行文件 `bin/cli-proxy-api`，赋予两个服务程序和启动脚本执行权限，再按下文启动。模型列表启动脚本还需要 Python 3 和 PyYAML，可先执行 `python3 -c "import yaml"` 检查；缺少依赖时，在 WSL 中安装 `python3-yaml`（例如 `sudo apt install python3-yaml`）。
 
 本机代理配置中的 `requests.proxy-url` 如指向 `http://127.0.0.1:7890`，需要确认该代理可用；其他机器应根据自己的网络环境配置。密钥、代理地址和项目路径均为本地配置，不随本次提交上传。
 
@@ -76,10 +76,32 @@ cd /mnt/e/Project/LMK/CLIProxyAPI
 按照终端提示打开授权网页并输入设备码，完成账号授权。此命令用于登录，不是持续运行代理服务；授权完成后，再执行下面的启动命令：
 
 ```bash
-./bin/cli-proxy-api --config ./config.yaml --local-model
+./start-with-models.sh --config ./config.yaml --local-model
 ```
 
 代理地址为 `http://127.0.0.1:8317`。看到 `API server started successfully` 表示启动成功。
+
+### 每次启动更新模型列表
+
+`start-with-models.sh` 会启动 `bin/cli-proxy-api`，读取 `config.yaml` 的 `server` 地址和 `access.api-keys` 中的第一个调用密钥，查询 `/v1/models`，将结果保存到项目目录的 `available-models.json`。列表包含 `base_url`、`updated_at`、`status`、`model_ids` 和完整模型数据，不包含调用密钥。文件会在每次启动时覆盖更新，并已加入 Git 忽略规则。
+
+查看当前模型 ID：
+
+```bash
+python3 -c "import json; print('\n'.join(json.load(open('available-models.json'))['model_ids']))"
+```
+
+查看导出状态、接口地址和更新时间：
+
+```bash
+python3 -c "import json; d=json.load(open('available-models.json')); print(d['status'], d['base_url'], d['updated_at'])"
+```
+
+脚本最多等待约 60 秒获取模型目录，并在非空列表稳定约 3 秒后结束采集；代理继续前台运行。`starting` 表示正在获取，`ready` 表示已获得接口返回（可能为空），`unavailable` 表示未取得有效结果。获取失败时不会沿用上次的旧模型列表，查看代理日志检查登录状态和配置。按 `Ctrl+C` 会停止代理。
+
+这里的列表表示当前密钥通过代理 `/v1/models` 可见的模型，未逐个发起模型调用；账号权限、额度和上游状态仍可能影响实际请求。`--local-model` 使用程序内置模型目录，因此列表还受当前二进制版本影响。新增账号或修改配置后，可在下次重启时更新列表；脚本不持续监控运行期间的变化。
+
+直接使用 `./bin/cli-proxy-api --config ./config.yaml --local-model` 不会自动导出列表。设备登录仍使用上面的原始登录命令，完成后再运行 `start-with-models.sh`。
 
 另开一个 WSL 终端，进入同一项目目录，启动统计面板：
 
@@ -178,6 +200,9 @@ curl --noproxy '*' -I http://127.0.0.1:18317/management.html
 | -------------------------------------------------- | -------------------------------------------- |
 | `config.yaml`                                    | CLIProxyAPI 本地配置，包括管理密钥和用量开关 |
 | `start-cpa-manager.sh`                           | 面板启动脚本                                 |
+| `start-with-models.sh`                           | 代理启动及模型列表导出入口                   |
+| `scripts/start_with_models.py`                   | 模型列表采集和代理进程管理                   |
+| `available-models.json`                          | 每次启动更新的模型列表，不包含密钥           |
 | `.tools/cpa-manager-plus/cpa-manager-plus`       | 原生面板程序                                 |
 | `.tools/cpa-manager-plus/runtime/config.json`    | 面板本地配置，当前包含本机绝对路径           |
 | `.tools/cpa-manager-plus/runtime/admin-key`      | 面板登录密钥                                 |

@@ -7,6 +7,8 @@ config.yaml
 .env
 
 # Generated content
+/available-models.json
+__pycache__/
 bin/*
 /logs
 conv/*
